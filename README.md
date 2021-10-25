@@ -1,4 +1,4 @@
-# Hydro Common 
+# FaaSTCC Common 
 
 This repository is a shared repository for header files, [protobuf definitions](https://developers.google.com/protocol-buffers/), and scripts. It is linked into other repositories in the Hydro project using [git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules). This README provides a brief overview of the contents of this repository. This repository will not change frequently and should only contain code that is used across multiple Hydro subprojects.
 
