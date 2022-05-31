@@ -348,22 +348,20 @@ public:
         Key key = tuple.key();
 
         if (response.type() == RequestType::GET) {
-          if (pending_get_response_map_.find(key) != pending_get_response_map_.end() &&
-              pending_get_response_map_[key].find(response.response_id()) !=pending_get_response_map_[key].end()) {
+          if (pending_get_response_map_.find(key) !=
+              pending_get_response_map_.end()) {
             if (check_tuple(response.tuples(0))) {
               // error no == 2, so re-issue request
-              pending_get_response_map_[key][response.response_id()].tp_ =
+              pending_get_response_map_[key].tp_ =
                   std::chrono::system_clock::now();
 
-              try_request(pending_get_response_map_[key][response.response_id()].request_);
+              try_request(pending_get_response_map_[key].request_);
             } else {
               // error no == 0 or 1
               flag = true;
 
-              pending_get_response_map_[key].erase(response.response_id());
-              if (pending_get_response_map_[key].empty()){
-                  pending_get_response_map_.erase(key);
-              }
+              pending_get_response_map_.erase(key);
+
             }
           }
         } else {
@@ -420,25 +418,22 @@ public:
     }
 
     // GC the pending get response map
-      map<Key, set<string>> to_remove_get;
-      for (const auto& pair : pending_get_response_map_) {
-        for (const auto& version_request : pair.second){
-          if (std::chrono::duration_cast<std::chrono::milliseconds>(
-              std::chrono::system_clock::now() - version_request.second.tp_)
-                  .count() > timeout_) {
-            // query to server timed out
-            result.push_back(generate_bad_response(version_request.second.request_));
-              to_remove_get[pair.first].insert(version_request.first);
-            invalidate_cache_for_worker(version_request.second.worker_addr_);
-          }
-        }
+    to_remove.clear();
+    for (const auto& pair : pending_get_response_map_) {
+      if (std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now() - pair.second.tp_)
+              .count() > timeout_) {
+        // query to server timed out
+        result.push_back(generate_bad_response(pair.second.request_));
+        to_remove.insert(pair.first);
+        invalidate_cache_for_worker(pair.second.worker_addr_);
+      }
     }
 
-  for (const auto& key_set_pair : to_remove_get) {
-      for (const auto& id : key_set_pair.second) {
-          pending_get_response_map_[key_set_pair.first].erase(id);
-      }
-  }
+    for (const Key& key : to_remove) {
+      pending_get_response_map_.erase(key);
+    }
+
     // GC the pending put response map
     map<Key, set<string>> to_remove_put;
     for (const auto& key_map_pair : pending_put_response_map_) {
@@ -597,14 +592,11 @@ private:
       if (request.type() == RequestType::GET) {
         if (pending_get_response_map_.find(key) ==
             pending_get_response_map_.end()) {
-            map<string, PendingRequest> new_request;
-            new_request[request.request_id()].tp_ = std::chrono::system_clock::now();
-            new_request[request.request_id()].request_ = request;
-        } else if (pending_get_response_map_[key].find(request.request_id()) == pending_get_response_map_[key].end()){
-            pending_get_response_map_[key][request.request_id()].tp_ = std::chrono::system_clock::now();
-            pending_get_response_map_[key][request.request_id()].request_ = request;
-          }
-        pending_get_response_map_[key][request.request_id()].worker_addr_ = worker;
+          pending_get_response_map_[key].tp_ = std::chrono::system_clock::now();
+          pending_get_response_map_[key].request_ = request;
+        }
+
+        pending_get_response_map_[key].worker_addr_ = worker;
       } else {
         if (pending_put_response_map_[key].find(request.request_id()) ==
             pending_put_response_map_[key].end()) {
@@ -622,16 +614,11 @@ private:
         if (request.type() == RequestType::GET) {
           if (pending_get_response_map_.find(key) ==
               pending_get_response_map_.end()) {
-              map<string, PendingRequest> new_request;
-              new_request[request.request_id()].tp_ = std::chrono::system_clock::now();
-              new_request[request.request_id()].request_ = request;
-          } else if (pending_get_response_map_[key].find(request.request_id()) != pending_get_response_map_[key].end()){
-              pending_put_response_map_[key][request.request_id()].tp_ =
-                      std::chrono::system_clock::now();
-              pending_put_response_map_[key][request.request_id()].request_ = request;
+            pending_get_response_map_[key].tp_ = std::chrono::system_clock::now();
+            pending_get_response_map_[key].request_ = request;
           }
 
-          pending_get_response_map_[key][request.request_id()].worker_addr_ = worker;
+          pending_get_response_map_[key].worker_addr_ = worker;
         } else {
           if (pending_put_response_map_[key].find(request.request_id()) ==
               pending_put_response_map_[key].end()) {
@@ -947,7 +934,7 @@ private:
   map<Key, vector<State*>> pending_state_map_;
 
   // keeps track of pending get responses
-  map<Key, map<string, PendingRequest>> pending_get_response_map_;
+  map<Key, PendingRequest> pending_get_response_map_;
 
   map<string, State*> pending_tx_state_map_;
 
